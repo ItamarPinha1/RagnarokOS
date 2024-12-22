@@ -1,24 +1,44 @@
-ENTRY(_start)
+/* Link.ld -- Linker script for the kernel - ensure everything goes in the */
+/*            Correct place.  */
+/*            Original file taken from Bran's Kernel Development */
+/*            tutorials: http://www.osdever.net/bkerndev/index.php. */
 
+ENTRY(_start)
 SECTIONS
 {
-    /* Place the code (.text) at 0x1000 */
-    . = 0x1000;
+    . = 0x00100000;
 
-    .text : {
+    .multiboot ALIGN(4K): {
+        *(.multiboot)
+    }
+
+    .note.gnu.build-id ALIGN(4K): {
+        *(.note.gnu.build-id)
+    }
+
+    .boot ALIGN(4K) : {
+        *(.boot)
+    }
+
+    . += 0xC0000000;
+
+    .text ALIGN(4K): AT(ADDR(.text) - 0xC0000000){
         *(.text)
     }
 
-    /* Place the data (.data) right after the code */
-    .data : {
+    .rodata ALIGN(4K): AT(ADDR(.rodata) - 0xC0000000){
+        *(.rodata)
+    }
+
+    .data ALIGN(4K): AT(ADDR(.data) - 0xC0000000){
         *(.data)
     }
 
-    /* Place the uninitialized data (.bss) after .data */
-    .bss : {
+    .bss ALIGN(4K): AT(ADDR(.bss) - 0xC0000000){
+        *(COMMON)
         *(.bss)
     }
 
-    /* Define the end of the kernel */
-    _end = .;
+    _kernel_end = .;
+
 }

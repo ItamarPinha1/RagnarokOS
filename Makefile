@@ -1,46 +1,36 @@
-C_SOURCES = $(wildcard kernel/*.c drivers/screen/*.c)
-HEADERS = $(wildcard kernel/*.h drivers/screen/*.h)
-# Nice syntax for file extension replacement
-OBJ = ${C_SOURCES:.c=.o}
+# Gather all C++ source files
+CPP_SOURCES = $(wildcard kernel/*.cpp drivers/vga/*.cpp drivers/keyboard/*.cpp drivers/ports/*.cpp libc/stdlib/stdlib.cpp kernel/cpu/gdt/*.cpp kernel/cpu/interrupts/*.cpp kernel/memory/*.cpp)
+HEADERS = $(wildcard kernel/*.h drivers/vga/*.h drivers/keyboard/*.h drivers/ports/*.h libc/stdlib/stdlib.h kernel/cpu/gdt/*.h kernel/cpu/interrupts/*.cpp kernel/memory/*.h)
 
-# Change this if your cross-compiler is somewhere else
-CC = gcc
-GDB = gdb
-# -g: Use debugging symbols in gcc
-CFLAGS = -g -m32 -ffreestanding -fno-pic -fno-builtin
+# Replace .cpp with .o
+OBJ = ${CPP_SOURCES:.cpp=.o}
 
-# First rule is run by default
-os-image.bin: boot/bootsect.bin kernel.bin
-	cat $^ > os-image.bin
+# Compiler and linker
+CPP = g++
+LD = i686-elf-ld
+NASM = nasm
+QEMU = qemu-system-i386
+GRUBMKRESCUE = grub-mkrescue
 
-# '--oformat binary' deletes all symbols as a collateral, so we don't need
-# to 'strip' them manually on this case
-kernel.bin: boot/kernel_entry.o ${OBJ}
-	i686-elf-ld -o $@ -T linker.ld $^ --oformat binary
+# Flags
+CPPFLAGS = -g -m32 -ffreestanding -fno-pic -fno-builtin
+LDFLAGS = -T linker.ld
 
-# Used for debugging purposes
-kernel.elf: boot/kernel_entry.o ${OBJ}
-	i686-elf-ld -o $@ -T linker.ld $^ 
+# Main target
+Ragnarok.bin: ${OBJ}
+	$(NASM) -f elf32 boot/boot.s -o boot/boot.o
+	$(NASM) -f elf32 kernel/cpu/gdt/gdt.s -o kernel/cpu/gdt/gdt_asm.o
+	$(NASM) -f elf32 kernel/cpu/interrupts/stubs.s -o kernel/cpu/interrupts/stubs.o
 
-run: os-image.bin
-	qemu-system-i386 -fda os-image.bin
+	$(LD) $(LDFLAGS) -o $@ boot/boot.o kernel/cpu/gdt/gdt_asm.o kernel/cpu/interrupts/stubs.o $^
+	mv Ragnarok.bin RagnarokOS/boot/Ragnarok.bin
+	$(GRUBMKRESCUE) -o Ragnarok.iso RagnarokOS/
 
-# Open the connection to qemu and load our kernel-object file with symbols
-debug: os-image.bin kernel.elf
-	qemu-system-i386 -s -S -fda os-image.bin &
-	${GDB} -ex "target remote localhost:1234" -ex "symbol-file kernel.elf"
+# Run target
+run: Ragnarok.bin
+	$(QEMU) Ragnarok.iso
 
-# Generic rules for wildcards
-# To make an object, always compile from its .c
-%.o: %.c ${HEADERS}
-	${CC} ${CFLAGS} -ffreestanding -c $< -o $@
-
-%.o: %.asm
-	nasm $< -f elf -o $@
-
-%.bin: %.asm
-	nasm $< -f bin -o $@
-
+# Clean target
 clean:
-	rm -rf *.bin *.dis *.o os-image.bin *.elf
-	rm -rf kernel/*.o boot/*.bin drivers/*.o boot/*.o drivers/screen/*.o
+	rm -f boot/*.o kernel/*.o Ragnarok Ragnarok.iso drivers/vga/*.o drivers/ports/*.o libc/stdlib/*.o RagnarokOS/boot/Ragnarok.bin
+	rm -f kernel/cpu/gdt/*.o kernel/cpu/interrupts/*.o drivers/keyboard/*.o kernel/memory/*.o
